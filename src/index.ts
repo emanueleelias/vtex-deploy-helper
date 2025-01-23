@@ -1,13 +1,22 @@
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import chalk from 'chalk';
 import ora from 'ora';
 import * as inquirer from 'inquirer';
 import { existsSync } from 'fs';
+import path from 'path';
+import * as fs from 'fs';
+
+
+interface ManifestData {
+  vendor: string;
+  name: string;
+  version: string;
+}
 
 const execAsync = promisify(exec);
 
-async function execCommand(command: string): Promise<string> {
+async function execCommandAsync(command: string): Promise<string> {
   try {
     const { stdout, stderr } = await execAsync(command);
     if (stderr) {
@@ -18,6 +27,33 @@ async function execCommand(command: string): Promise<string> {
     console.error(chalk.red(`Error ejecutando comando: ${command}`));
     throw error;
   }
+}
+
+
+
+function execCommand(command: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Separamos el comando y sus argumentos
+    const [cmd, ...args] = command.split(' ');
+
+    // Creamos el proceso con stdio heredado para permitir interacción
+    const childProcess = spawn(cmd, args, {
+      stdio: 'inherit', // Esto permite la interacción directa con el proceso
+      shell: true
+    });
+
+    childProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command failed with code ${code}`));
+      }
+    });
+
+    childProcess.on('error', (err) => {
+      reject(err);
+    });
+  });
 }
 
 // Helper para hacer delay entre comandos si es necesario
@@ -45,6 +81,36 @@ export class VtexDeploy {
       validate: (input) => input.length > 0 || 'El vendor es requerido'
     }]);
     this.vendor = vendor;
+  }
+
+
+  private async getVendorFromManifest(): Promise<string> {
+    try {
+      // Obtener el directorio actual
+      const currentDir = process.cwd();
+      const manifestPath = path.join(currentDir, 'manifest.json');
+
+      // Verificar si existe el archivo
+      if (!fs.existsSync(manifestPath)) {
+        throw new Error('No se encontró el archivo manifest.json en el directorio actual. Asegúrate de estar en el directorio raíz del proyecto.');
+      }
+
+      // Leer y parsear el manifest.json
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+      const manifest: ManifestData = JSON.parse(manifestContent);
+
+      // Validar que exista el vendor
+      if (!manifest.vendor) {
+        throw new Error('No se encontró el campo "vendor" en el manifest.json');
+      }
+
+      return manifest.vendor;
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(chalk.red('\n❌ Error al leer el manifest.json:'), error.message);
+      }
+      throw error;
+    }
   }
 
   private async checkCustomAppDirectory(): Promise<boolean> {
@@ -98,28 +164,28 @@ export class VtexDeploy {
 
   private async executePatchStable(): Promise<void> {
     try {
-      await this.promptForVendor();
+      this.vendor = await this.getVendorFromManifest();
+      console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
       const spinner = ora('Ejecutando patch stable...').start();
-      try {
-        console.log(chalk.gray(`Ejecutando login para vendor: ${this.vendor}`));
 
-        spinner.text = `Iniciando sesión en VTEX - (vtex login ${this.vendor})...`;
+      try {
+        // console.log(chalk.yellow(`\n👤 Ejecutando login para vendor: ${this.vendor}`));
+        spinner.stop(); // Detenemos el spinner antes de cada comando interactivo
+
+        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
-        spinner.text = 'Cambiando a workspace production - (vtex use production --production)...';
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
-        spinner.text = 'Ejecutando release patch stable - (vtex release patch stable)...';
+        console.log(chalk.yellow('\n📤 Ejecutando release patch stable - (vtex release patch stable)...'));
         await execCommand('vtex release patch stable');
 
-        spinner.text = 'Ejecutando deploy force - (vtex deploy --force)...';
+        console.log(chalk.yellow('\n🛠️ Ejecutando deploy force - (vtex deploy --force)...'));
         await execCommand('vtex deploy --force');
 
-        spinner.text = 'Actualizando workspace de producción - (vtex update)...';
+        console.log(chalk.yellow('\n💾 Actualizando workspace de producción - (vtex update)...'));
         await execCommand('vtex update');
-
-        // Pausamos el spinner mientras se hace la verificación
-        spinner.stop();
 
         // Mostramos el link de producción
         const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
@@ -137,26 +203,23 @@ export class VtexDeploy {
         ]);
 
         if (!continuar) {
-          spinner.fail('Proceso cancelado por el usuario');
+          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
           return;
         }
 
-        // Reiniciamos el spinner para continuar con el proceso
-        spinner.start();
-
-        spinner.text = 'Cambiando a workspace master - (vtex use master)...';
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
         await execCommand('vtex use master');
 
-        spinner.text = 'Actualizando workspace master...';
+        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
         await execCommand('vtex update');
 
-        spinner.succeed('✅ Patch stable completado exitosamente');
+        console.log(chalk.green('\n✅ Patch stable completado exitosamente 🚀'));
       } catch (error) {
-        spinner.fail('❌ Error durante el patch stable');
+        console.error(chalk.red('\n❌ Error durante el patch stable'));
         throw error;
       }
     } catch (error) {
-      console.error(chalk.red('❌ Error en patch stable:'), error);
+      console.error(chalk.red('\n❌ Error en patch stable:'), error);
       throw error;
     }
   }

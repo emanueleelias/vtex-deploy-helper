@@ -98,7 +98,7 @@ Este proyecto está licenciado bajo la licencia MIT. Consulta el archivo [LICENS
 
 Si tienes alguna pregunta o sugerencia, no dudes en abrir un issue en el repositorio de GitHub o contactarme directamente.
 
-- **GitHub**: [Repositorio de vtex-deploy-helper]()
+- **GitHub**: [Repositorio de vtex-deploy-helper](https://github.com/emanueleelias/vtex-deploy-helper)
 - **Correo Electrónico**: <emanueleeliasdaniel@gmail.com>
 
 ---
