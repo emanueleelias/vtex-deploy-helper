@@ -38,7 +38,6 @@ program
       const finalOptions = {
         deployType
       };
-
       console.log(chalk.gray('Configuración seleccionada:'));
       console.log(chalk.gray(`• Tipo de deploy: ${deployType}`));
 

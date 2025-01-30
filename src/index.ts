@@ -226,172 +226,196 @@ export class VtexDeploy {
 
   private async executeNewCustomApp(): Promise<void> {
     try {
-      // Primero hacemos todas las verificaciones sin spinner
-      console.log(chalk.blue('🔍 Verificando custom app...'));
+      this.vendor = await this.getVendorFromManifest();
+      console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
 
-      // Verificar directorio
+      // Verificación de directorio
+      console.log(chalk.blue('\n🔍 Verificando custom app...'));
       if (!await this.checkCustomAppDirectory()) {
-        console.log(chalk.red('❌ Verificación fallida: directorio incorrecto'));
-        return;
+        throw new Error('Directorio incorrecto para custom app');
       }
 
-      // Pedir vendor
-      await this.promptForVendor();
-
-      // Ahora sí iniciamos el spinner para los comandos
       const spinner = ora('Iniciando deploy de nueva custom app...').start();
 
       try {
-        // Ejecutar comandos uno por uno con feedback
-        spinner.text = 'Iniciando sesión en VTEX...';
+        spinner.stop();
+        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
-        spinner.text = 'Cambiando a workspace production...';
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
-        spinner.text = 'Publicando app...';
+        console.log(chalk.yellow('\n📦 Publicando app - (vtex publish)...'));
         await execCommand('vtex publish');
 
-        spinner.text = 'Ejecutando deploy force...';
+        console.log(chalk.yellow('\n🛠️ Ejecutando deploy force - (vtex deploy --force)...'));
         await execCommand('vtex deploy --force');
 
-        spinner.text = 'Actualizando workspace productivo...';
+        console.log(chalk.yellow('\n💾 Actualizando workspace productivo - (vtex update)...'));
         await execCommand('vtex update');
 
-        spinner.text = 'Cambiando a workspace master...';
+        // Mostrar URL y confirmación
+        const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
+        console.log(chalk.cyan('\n🌐 Verifica los cambios en:'));
+        console.log(chalk.blue(productionUrl));
+
+        const { continuar } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'continuar',
+          message: '¿Los cambios están correctos y deseas continuar?',
+          default: false,
+        }]);
+
+        if (!continuar) {
+          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+          return;
+        }
+
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
         await execCommand('vtex use master');
 
-        spinner.text = 'Actualizando workspace master...';
+        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
         await execCommand('vtex update');
 
-        spinner.succeed('✅ Deploy de nueva custom app completado exitosamente');
+        console.log(chalk.green('\n✅ Nueva custom app desplegada exitosamente 🚀'));
       } catch (error) {
-        spinner.fail('Error durante el deploy de nueva custom app');
+        console.error(chalk.red('\n❌ Error durante el deploy de nueva custom app'));
         throw error;
       }
     } catch (error) {
-      console.error(chalk.red('❌ Error en new custom app:'), error);
+      console.error(chalk.red('\n❌ Error en new custom app:'), error);
       throw error;
     }
   }
 
   private async executeUpdateCustomApp(): Promise<void> {
     try {
-      // Primero hacemos todas las verificaciones sin spinner
-      console.log(chalk.blue('🔍 Verificando custom app...'));
+      this.vendor = await this.getVendorFromManifest();
+      console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
 
-      // Verificar directorio y versión
-      if (!await this.checkCustomAppDirectory() || !await this.checkVersionUpdate()) {
-        console.log(chalk.red('❌ Verificación fallida: directorio incorrecto'));
-        return;
+      // Verificaciones
+      console.log(chalk.blue('\n🔍 Verificando custom app...'));
+      if (!(await this.checkCustomAppDirectory() && await this.checkVersionUpdate())) {
+        throw new Error('Verificación fallida: directorio o versión incorrectos');
       }
 
-      await this.promptForVendor();
-
-      const spinner = ora('Iniciando update de custom app...').start();
+      const spinner = ora('Iniciando actualización de custom app...').start();
 
       try {
-        // Ejecutar comandos uno por uno con feedback
-        spinner.text = 'Iniciando sesión en VTEX...';
+        spinner.stop();
+        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
-        spinner.text = 'Cambiando a workspace production...';
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
-        spinner.text = 'Publicando update...';
+        console.log(chalk.yellow('\n📦 Publicando actualización - (vtex publish)...'));
         await execCommand('vtex publish');
 
-        spinner.text = 'Ejecutando deploy force...';
+        console.log(chalk.yellow('\n🛠️ Ejecutando deploy force - (vtex deploy --force)...'));
         await execCommand('vtex deploy --force');
 
-        spinner.text = 'Actualizando workpsace productivo...';
+        console.log(chalk.yellow('\n💾 Actualizando workspace productivo - (vtex update)...'));
         await execCommand('vtex update');
 
-        spinner.text = 'Cambiando a workspace master...';
+        // Verificación y confirmación
+        const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
+        console.log(chalk.cyan('\n🌐 Verifica los cambios en:'));
+        console.log(chalk.blue(productionUrl));
+
+        const { continuar } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'continuar',
+          message: '¿Los cambios están correctos y deseas continuar?',
+          default: false,
+        }]);
+
+        if (!continuar) {
+          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+          return;
+        }
+
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
         await execCommand('vtex use master');
 
-        spinner.text = 'Actualizando workspace master...';
+        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
         await execCommand('vtex update');
 
-        spinner.succeed('✅ Update de la custom app completada exitosamente');
+        console.log(chalk.green('\n✅ Custom app actualizada exitosamente 🚀'));
       } catch (error) {
-        spinner.fail('Error durante la actualización de la custom app');
+        console.error(chalk.red('\n❌ Error durante la actualización de la custom app'));
         throw error;
       }
     } catch (error) {
-      console.error(chalk.red('❌ Error en new custom app:'), error);
+      console.error(chalk.red('\n❌ Error en update custom app:'), error);
       throw error;
     }
   }
 
   private async executeMajorStable(): Promise<void> {
     try {
-      await this.promptForVendor();
-      const spinner = ora('Ejecutando major stable...').start();
+      this.vendor = await this.getVendorFromManifest();
+      console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
+
+      const spinner = ora('Iniciando major stable...').start();
 
       try {
-        // Primera parte: release major
-
-        spinner.text = `Iniciando sesión en VTEX - (vtex login ${this.vendor})...`;
+        spinner.stop();
+        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
-        spinner.text = 'Cambiando a workspace production - (vtex use production --production)...';
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
-        spinner.text = 'Ejecutando release major stable - (vtex release major stable)...';
+        console.log(chalk.yellow('\n🚀 Ejecutando release major stable - (vtex release major stable)...'));
         await execCommand('vtex release major stable');
 
-        spinner.text = 'Instalando GraphQL IDE - (vtex install vtex.admin-graphql-ide@3.x)...';
+        console.log(chalk.yellow('\n🔌 Instalando GraphQL IDE - (vtex install vtex.admin-graphql-ide@3.x)...'));
         await execCommand('vtex install vtex.admin-graphql-ide@3.x');
 
-        // Pausamos el spinner para mostrar las instrucciones
-        spinner.stop();
-
+        // Instrucciones para el usuario
         const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
         console.log(chalk.blue('\n🔄 Proceso de migración requerido'));
-        console.log(chalk.yellow('\nPor favor, sigue estos pasos en el admin de GraphQL:'));
-        console.log(chalk.white(`
+        console.log(chalk.yellow(`
           1. Accede a: vtex browse admin/graphql-ide
           2. Selecciona vtex.pages-graphql@2.x
-          3. Ejecuta la siguiente mutation (ajusta el vendor y versiones):
-          mutation {
-            updateThemeIds(from:"${this.vendor}.store@3.x", to:"${this.vendor}.store@4.x")
-          }
-
-          4. Verifica que la respuesta sea:
-          {
-            "data": {
-              "updateThemeIds": true
+          3. Ejecuta la mutation:
+            mutation {
+              updateThemeIds(from:"${this.vendor}.store@3.x", to:"${this.vendor}.store@4.x")
             }
-          }`));
+          4. Verifica que la respuesta sea {"data": {"updateThemeIds": true}}`));
 
         console.log(chalk.cyan('\n🌐 Verifica los cambios en:'));
         console.log(chalk.blue(productionUrl));
 
-        // Esperar confirmación del usuario
-        const { shouldContinue } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'shouldContinue',
-            message: '¿La migración se completó correctamente y deseas continuar con el proceso?',
-            default: false,
-          },
-        ]);
+        const { continuar } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'continuar',
+          message: '¿La migración se completó correctamente y deseas continuar?',
+          default: false,
+        }]);
 
-        if (shouldContinue) {
-          // Reiniciamos el spinner para la última parte
-          spinner.start('Ejecutando promoción...');
-          await execCommand('vtex promote');
-          spinner.succeed('✅ Major stable y migración completados exitosamente');
-        } else {
-          spinner.info('Proceso interrumpido por el usuario');
+        if (!continuar) {
+          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+          return;
         }
+
+        console.log(chalk.yellow('\n🚀 Promoviendo cambios - (vtex promote)...'));
+        await execCommand('vtex promote');
+
+        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
+        await execCommand('vtex use master');
+
+        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
+        await execCommand('vtex update');
+
+        console.log(chalk.green('\n✅ Major stable completado exitosamente 🚀'));
       } catch (error) {
-        spinner.fail('❌ Error durante el major stable');
+        console.error(chalk.red('\n❌ Error durante el major stable'));
         throw error;
       }
     } catch (error) {
-      console.error(chalk.red('❌ Error en patch stable:'), error);
+      console.error(chalk.red('\n❌ Error en major stable:'), error);
       throw error;
     }
   }

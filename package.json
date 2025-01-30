@@ -1,6 +1,6 @@
 {
   "name": "vtex-deploy-helper",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Librería para facilitar el despliegue en VTEX IO",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
