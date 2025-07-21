@@ -1,4 +1,4 @@
-### **vtex-deploy-helper**
+# VTEX Deploy Helper
 
 ---
 

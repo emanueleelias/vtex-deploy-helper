@@ -29,8 +29,6 @@ async function execCommandAsync(command: string): Promise<string> {
   }
 }
 
-
-
 function execCommand(command: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Separamos el comando y sus argumentos
@@ -175,6 +173,9 @@ export class VtexDeploy {
         console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
+        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
+        await execCommand('vtex workspace delete production');
+
         console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
@@ -242,6 +243,9 @@ export class VtexDeploy {
         console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
+        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
+        await execCommand('vtex workspace delete production');
+
         console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
@@ -306,6 +310,9 @@ export class VtexDeploy {
         console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
 
+        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
+        await execCommand('vtex workspace delete production');
+
         console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
 
@@ -363,6 +370,9 @@ export class VtexDeploy {
         spinner.stop();
         console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
         await execCommand(`vtex login ${this.vendor}`);
+
+        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
+        await execCommand('vtex workspace delete production');
 
         console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
         await execCommand('vtex use production --production');
