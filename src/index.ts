@@ -1,11 +1,25 @@
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import chalk from 'chalk';
-import ora from 'ora';
 import * as inquirer from 'inquirer';
 import { existsSync } from 'fs';
 import path from 'path';
 import * as fs from 'fs';
+
+interface DeployStep {
+  emoji: string;
+  label: string;
+  command: string;
+}
+
+function createLogger() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const logFile = path.join(process.cwd(), `vdeploy-${timestamp}.log`);
+
+  return (message: string) => {
+    fs.appendFileSync(logFile, `${new Date().toISOString()} - ${message}\n`, 'utf8');
+  };
+}
 
 
 interface ManifestData {
@@ -61,14 +75,51 @@ export type DeployType = 'PATCH_STABLE' | 'NEW_CUSTOM_APP' | 'UPDATE_CUSTOM_APP'
 
 export interface DeployOptions {
   deployType?: DeployType;
+  dryRun?: boolean;
 }
 
 export class VtexDeploy {
   private deployType: DeployType;
   private vendor: string = '';
+  private dryRun: boolean;
+  private log: (msg: string) => void;
 
   constructor(options: DeployOptions = {}) {
     this.deployType = options.deployType || 'PATCH_STABLE';
+    this.dryRun = options.dryRun || false;
+    this.log = createLogger();
+    this.setupSignalHandlers();
+  }
+
+  private setupSignalHandlers() {
+    process.on('SIGINT', () => {
+      console.log(chalk.red('\n\n⚠️  Proceso cancelado (SIGINT).'));
+      console.log(chalk.yellow('El workspace y configuración pueden estar en un estado inconsistente. Revisa VTEX IO manualmente.'));
+      this.log('ERROR: Proceso cancelado por el usuario (SIGINT)');
+      process.exit(1);
+    });
+  }
+
+  private async runPipeline(steps: DeployStep[]): Promise<void> {
+    for (const step of steps) {
+      const msg = `\n${step.emoji} ${step.label} - (${step.command})...`;
+      console.log(chalk.yellow(msg));
+      this.log(`RUNNING: ${step.command}`);
+
+      if (this.dryRun) {
+        console.log(chalk.gray('  [dry-run] Comando omitido'));
+        this.log(`DRY-RUN SKIPPED: ${step.command}`);
+        continue;
+      }
+
+      try {
+        await execCommand(step.command);
+        this.log(`SUCCESS: ${step.command}`);
+      } catch (error: any) {
+        this.log(`FAILED: ${step.command} - Error: ${error.message}`);
+        throw error;
+      }
+    }
   }
 
   private async promptForVendor(): Promise<void> {
@@ -82,7 +133,7 @@ export class VtexDeploy {
   }
 
 
-  private async getVendorFromManifest(): Promise<string> {
+  private async readManifest(): Promise<ManifestData> {
     try {
       // Obtener el directorio actual
       const currentDir = process.cwd();
@@ -102,13 +153,31 @@ export class VtexDeploy {
         throw new Error('No se encontró el campo "vendor" en el manifest.json');
       }
 
-      return manifest.vendor;
+      return manifest;
     } catch (error) {
       if (error instanceof Error) {
         console.error(chalk.red('\n❌ Error al leer el manifest.json:'), error.message);
       }
       throw error;
     }
+  }
+
+  private async getVendorFromManifest(): Promise<string> {
+    const manifest = await this.readManifest();
+    return manifest.vendor;
+  }
+
+  private async getThemeVersions(): Promise<{ from: string; to: string }> {
+    const manifest = await this.readManifest();
+    const versionMatch = manifest.version.match(/^(\d+)\./);
+    if (!versionMatch) {
+      throw new Error(`Formato de versión inválido en manifest.json: ${manifest.version}`);
+    }
+    const currentMajor = parseInt(versionMatch[1], 10);
+    return {
+      from: `${manifest.vendor}.store@${currentMajor}.x`,
+      to: `${manifest.vendor}.store@${currentMajor + 1}.x`
+    };
   }
 
   private async checkCustomAppDirectory(): Promise<boolean> {
@@ -164,57 +233,47 @@ export class VtexDeploy {
     try {
       this.vendor = await this.getVendorFromManifest();
       console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
-      const spinner = ora('Ejecutando patch stable...').start();
+      this.log(`Iniciando PATCH_STABLE para vendor: ${this.vendor}`);
 
       try {
-        // console.log(chalk.yellow(`\n👤 Ejecutando login para vendor: ${this.vendor}`));
-        spinner.stop(); // Detenemos el spinner antes de cada comando interactivo
+        const steps: DeployStep[] = [
+          { emoji: '👤', label: 'Iniciando sesión en VTEX', command: `vtex login ${this.vendor}` },
+          { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
+          { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
+          { emoji: '📤', label: 'Ejecutando release patch stable', command: 'vtex release patch stable' },
+          { emoji: '🛠️', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
+          { emoji: '💾', label: 'Actualizando workspace de producción', command: 'vtex update' }
+        ];
 
-        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
-        await execCommand(`vtex login ${this.vendor}`);
+        await this.runPipeline(steps);
 
-        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
-        await execCommand('vtex workspace delete production');
-
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
-        await execCommand('vtex use production --production');
-
-        console.log(chalk.yellow('\n📤 Ejecutando release patch stable - (vtex release patch stable)...'));
-        await execCommand('vtex release patch stable');
-
-        console.log(chalk.yellow('\n🛠️ Ejecutando deploy force - (vtex deploy --force)...'));
-        await execCommand('vtex deploy --force');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace de producción - (vtex update)...'));
-        await execCommand('vtex update');
-
-        // Mostramos el link de producción
         const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
         console.log(chalk.cyan('\n🌐 Por favor, verifica los cambios en:'));
         console.log(chalk.blue(productionUrl));
 
-        // Preguntamos al usuario si desea continuar
-        const { continuar } = await inquirer.prompt([
-          {
+        if (!this.dryRun) {
+          const { continuar } = await inquirer.prompt([{
             type: 'confirm',
             name: 'continuar',
             message: '¿Los cambios están correctos y deseas continuar con el proceso?',
             default: false,
-          },
-        ]);
+          }]);
 
-        if (!continuar) {
-          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
-          return;
+          if (!continuar) {
+            console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+            this.log('Proceso cancelado por el usuario tras verificación en production');
+            return;
+          }
         }
 
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
-        await execCommand('vtex use master');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
-        await execCommand('vtex update');
+        const finalSteps: DeployStep[] = [
+          { emoji: '🔄', label: 'Cambiando a workspace master', command: 'vtex use master' },
+          { emoji: '💾', label: 'Actualizando workspace master', command: 'vtex update' }
+        ];
+        await this.runPipeline(finalSteps);
 
         console.log(chalk.green('\n✅ Patch stable completado exitosamente 🚀'));
+        this.log('Patch stable completado exitosamente');
       } catch (error) {
         console.error(chalk.red('\n❌ Error durante el patch stable'));
         throw error;
@@ -229,59 +288,52 @@ export class VtexDeploy {
     try {
       this.vendor = await this.getVendorFromManifest();
       console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
+      this.log(`Iniciando NEW_CUSTOM_APP para vendor: ${this.vendor}`);
 
-      // Verificación de directorio
       console.log(chalk.blue('\n🔍 Verificando custom app...'));
       if (!await this.checkCustomAppDirectory()) {
         throw new Error('Directorio incorrecto para custom app');
       }
 
-      const spinner = ora('Iniciando deploy de nueva custom app...').start();
-
       try {
-        spinner.stop();
-        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
-        await execCommand(`vtex login ${this.vendor}`);
+        const steps: DeployStep[] = [
+          { emoji: '👤', label: 'Iniciando sesión en VTEX', command: `vtex login ${this.vendor}` },
+          { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
+          { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
+          { emoji: '📦', label: 'Publicando app', command: 'vtex publish' },
+          { emoji: '🛠️', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
+          { emoji: '💾', label: 'Actualizando workspace productivo', command: 'vtex update' }
+        ];
 
-        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
-        await execCommand('vtex workspace delete production');
+        await this.runPipeline(steps);
 
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
-        await execCommand('vtex use production --production');
-
-        console.log(chalk.yellow('\n📦 Publicando app - (vtex publish)...'));
-        await execCommand('vtex publish');
-
-        console.log(chalk.yellow('\n🛠️ Ejecutando deploy force - (vtex deploy --force)...'));
-        await execCommand('vtex deploy --force');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace productivo - (vtex update)...'));
-        await execCommand('vtex update');
-
-        // Mostrar URL y confirmación
         const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
         console.log(chalk.cyan('\n🌐 Verifica los cambios en:'));
         console.log(chalk.blue(productionUrl));
 
-        const { continuar } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'continuar',
-          message: '¿Los cambios están correctos y deseas continuar?',
-          default: false,
-        }]);
+        if (!this.dryRun) {
+          const { continuar } = await inquirer.prompt([{
+            type: 'confirm',
+            name: 'continuar',
+            message: '¿Los cambios están correctos y deseas continuar?',
+            default: false,
+          }]);
 
-        if (!continuar) {
-          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
-          return;
+          if (!continuar) {
+            console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+            this.log('Proceso cancelado por el usuario tras verificación en production');
+            return;
+          }
         }
 
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
-        await execCommand('vtex use master');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
-        await execCommand('vtex update');
+        const finalSteps: DeployStep[] = [
+          { emoji: '🔄', label: 'Cambiando a workspace master', command: 'vtex use master' },
+          { emoji: '💾', label: 'Actualizando workspace master', command: 'vtex update' }
+        ];
+        await this.runPipeline(finalSteps);
 
         console.log(chalk.green('\n✅ Nueva custom app desplegada exitosamente 🚀'));
+        this.log('Nueva custom app desplegada exitosamente');
       } catch (error) {
         console.error(chalk.red('\n❌ Error durante el deploy de nueva custom app'));
         throw error;
@@ -296,59 +348,52 @@ export class VtexDeploy {
     try {
       this.vendor = await this.getVendorFromManifest();
       console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
+      this.log(`Iniciando UPDATE_CUSTOM_APP para vendor: ${this.vendor}`);
 
-      // Verificaciones
       console.log(chalk.blue('\n🔍 Verificando custom app...'));
       if (!(await this.checkCustomAppDirectory() && await this.checkVersionUpdate())) {
         throw new Error('Verificación fallida: directorio o versión incorrectos');
       }
 
-      const spinner = ora('Iniciando actualización de custom app...').start();
-
       try {
-        spinner.stop();
-        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
-        await execCommand(`vtex login ${this.vendor}`);
+        const steps: DeployStep[] = [
+          { emoji: '👤', label: 'Iniciando sesión en VTEX', command: `vtex login ${this.vendor}` },
+          { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
+          { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
+          { emoji: '📦', label: 'Publicando actualización', command: 'vtex publish' },
+          { emoji: '🛠️', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
+          { emoji: '💾', label: 'Actualizando workspace productivo', command: 'vtex update' }
+        ];
 
-        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
-        await execCommand('vtex workspace delete production');
+        await this.runPipeline(steps);
 
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
-        await execCommand('vtex use production --production');
-
-        console.log(chalk.yellow('\n📦 Publicando actualización - (vtex publish)...'));
-        await execCommand('vtex publish');
-
-        console.log(chalk.yellow('\n🛠️ Ejecutando deploy force - (vtex deploy --force)...'));
-        await execCommand('vtex deploy --force');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace productivo - (vtex update)...'));
-        await execCommand('vtex update');
-
-        // Verificación y confirmación
         const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
         console.log(chalk.cyan('\n🌐 Verifica los cambios en:'));
         console.log(chalk.blue(productionUrl));
 
-        const { continuar } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'continuar',
-          message: '¿Los cambios están correctos y deseas continuar?',
-          default: false,
-        }]);
+        if (!this.dryRun) {
+          const { continuar } = await inquirer.prompt([{
+            type: 'confirm',
+            name: 'continuar',
+            message: '¿Los cambios están correctos y deseas continuar?',
+            default: false,
+          }]);
 
-        if (!continuar) {
-          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
-          return;
+          if (!continuar) {
+            console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+            this.log('Proceso cancelado por el usuario tras verificación en production');
+            return;
+          }
         }
 
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
-        await execCommand('vtex use master');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
-        await execCommand('vtex update');
+        const finalSteps: DeployStep[] = [
+          { emoji: '🔄', label: 'Cambiando a workspace master', command: 'vtex use master' },
+          { emoji: '💾', label: 'Actualizando workspace master', command: 'vtex update' }
+        ];
+        await this.runPipeline(finalSteps);
 
         console.log(chalk.green('\n✅ Custom app actualizada exitosamente 🚀'));
+        this.log('Custom app actualizada exitosamente');
       } catch (error) {
         console.error(chalk.red('\n❌ Error durante la actualización de la custom app'));
         throw error;
@@ -362,28 +407,21 @@ export class VtexDeploy {
   private async executeMajorStable(): Promise<void> {
     try {
       this.vendor = await this.getVendorFromManifest();
+      const themes = await this.getThemeVersions();
       console.log(chalk.green(`\n🔎 Vendor detectado desde manifest.json: ${this.vendor}`));
-
-      const spinner = ora('Iniciando major stable...').start();
+      this.log(`Iniciando MAJOR_STABLE para vendor: ${this.vendor}, themes: ${themes.from} -> ${themes.to}`);
 
       try {
-        spinner.stop();
-        console.log(chalk.yellow(`\n👤 Iniciando sesión en VTEX - (vtex login ${this.vendor})...`));
-        await execCommand(`vtex login ${this.vendor}`);
+        const steps: DeployStep[] = [
+          { emoji: '👤', label: 'Iniciando sesión en VTEX', command: `vtex login ${this.vendor}` },
+          { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
+          { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
+          { emoji: '🚀', label: 'Ejecutando release major stable', command: 'vtex release major stable' },
+          { emoji: '🔌', label: 'Instalando GraphQL IDE', command: 'vtex install vtex.admin-graphql-ide@3.x' }
+        ];
 
-        console.log(chalk.yellow('\n🧹 Eliminando/limpiando workspace de producción si existe - (vtex workspace delete production)...'));
-        await execCommand('vtex workspace delete production');
+        await this.runPipeline(steps);
 
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace production - (vtex use production --production)...'));
-        await execCommand('vtex use production --production');
-
-        console.log(chalk.yellow('\n🚀 Ejecutando release major stable - (vtex release major stable)...'));
-        await execCommand('vtex release major stable');
-
-        console.log(chalk.yellow('\n🔌 Instalando GraphQL IDE - (vtex install vtex.admin-graphql-ide@3.x)...'));
-        await execCommand('vtex install vtex.admin-graphql-ide@3.x');
-
-        // Instrucciones para el usuario
         const productionUrl = `https://production--${this.vendor}.myvtex.com/`;
         console.log(chalk.blue('\n🔄 Proceso de migración requerido'));
         console.log(chalk.yellow(`
@@ -391,35 +429,37 @@ export class VtexDeploy {
           2. Selecciona vtex.pages-graphql@2.x
           3. Ejecuta la mutation:
             mutation {
-              updateThemeIds(from:"${this.vendor}.store@3.x", to:"${this.vendor}.store@4.x")
+              updateThemeIds(from:"${themes.from}", to:"${themes.to}")
             }
           4. Verifica que la respuesta sea {"data": {"updateThemeIds": true}}`));
 
         console.log(chalk.cyan('\n🌐 Verifica los cambios en:'));
         console.log(chalk.blue(productionUrl));
 
-        const { continuar } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'continuar',
-          message: '¿La migración se completó correctamente y deseas continuar?',
-          default: false,
-        }]);
+        if (!this.dryRun) {
+          const { continuar } = await inquirer.prompt([{
+            type: 'confirm',
+            name: 'continuar',
+            message: '¿La migración se completó correctamente y deseas continuar?',
+            default: false,
+          }]);
 
-        if (!continuar) {
-          console.log(chalk.yellow('\nProceso cancelado por el usuario'));
-          return;
+          if (!continuar) {
+            console.log(chalk.yellow('\nProceso cancelado por el usuario'));
+            this.log('Proceso cancelado por el usuario tras solicitud de migración en major');
+            return;
+          }
         }
 
-        console.log(chalk.yellow('\n🚀 Promoviendo cambios - (vtex promote)...'));
-        await execCommand('vtex promote');
-
-        console.log(chalk.yellow('\n🔄 Cambiando a workspace master - (vtex use master)...'));
-        await execCommand('vtex use master');
-
-        console.log(chalk.yellow('\n💾 Actualizando workspace master - (vtex update)...'));
-        await execCommand('vtex update');
+        const finalSteps: DeployStep[] = [
+          { emoji: '🚀', label: 'Promoviendo cambios', command: 'vtex promote' },
+          { emoji: '🔄', label: 'Cambiando a workspace master', command: 'vtex use master' },
+          { emoji: '💾', label: 'Actualizando workspace master', command: 'vtex update' }
+        ];
+        await this.runPipeline(finalSteps);
 
         console.log(chalk.green('\n✅ Major stable completado exitosamente 🚀'));
+        this.log('Major stable completado exitosamente');
       } catch (error) {
         console.error(chalk.red('\n❌ Error durante el major stable'));
         throw error;

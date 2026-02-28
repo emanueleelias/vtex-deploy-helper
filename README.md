@@ -35,27 +35,13 @@ npm install -g vtex-deploy-helper
 
 Esto te permitirá utilizar el comando `vdeploy` desde cualquier lugar en tu sistema.
 
----
-
 ### **Uso del Comando `vdeploy`**
 
-El comando `vdeploy` es la interfaz principal para interactuar con la librería. Aquí te mostramos cómo usarlo:
+El comando `vdeploy` es la interfaz principal para interactuar con la librería. Puedes usarlo en modo interactivo (menú guiado clásico) o mediante subcomandos directos.
 
-```bash
-vdeploy
-```
+#### **Modo Interactivo (Por Defecto)**
 
-Al ejecutar este comando, se te guiará a través de un proceso interactivo para seleccionar el tipo de despliegue y proporcionar la información necesaria.
-
-#### **Opciones del Comando**
-
-- **Tipo de Despliegue**: Selecciona el tipo de despliegue que deseas realizar:
-  - **Release patch stable**: Para desplegar parches menores.
-  - **Release major stable (con migración de CMS)**: Para desplegar versiones mayores incluyendo la migración de CMS.
-  - **Deploy de custom app nueva**: Para desplegar una nueva custom app.
-  - **Update de custom app**: Para actualizar una custom app existente.
-
-#### **Ejemplo de Uso**
+Si ejecutas `vdeploy` sin argumentos, se abrirá un menú interactivo:
 
 ```bash
 $ vdeploy
@@ -67,6 +53,31 @@ Configuración seleccionada:
 ...
 ✅ Patch stable completado exitosamente
 ```
+
+#### **Subcomandos Directos**
+
+Para mayor velocidad e integraciones en CI/CD o scripts, puedes ejecutar directamente el tipo de despliegue deseado mediante subcomandos:
+
+- `vdeploy patch` — Despliegue de parches menores (`PATCH_STABLE`).
+- `vdeploy major` — Despliegue de versiones mayores con migración automática orientada desde `manifest.json`. (`MAJOR_STABLE`).
+- `vdeploy publish` — Para publicar una nueva custom app (`NEW_CUSTOM_APP`).
+- `vdeploy update` — Para actualizar una custom app existente (`UPDATE_CUSTOM_APP`).
+
+#### **Opciones Disponibles**
+
+- `--dry-run`: Puedes agregar esta opción a cualquier comando para que el CLI simule el proceso y muestre en pantalla **exactamente qué comandos se ejecutarían**, sin ejecutar nada. Ideal para verificar antes de actuar en producción.
+
+```bash
+# Ejemplo: testear qué pasará al hacer un update
+$ vdeploy update --dry-run
+```
+
+- `--help` (`-h`): Visualiza la ayuda del CLI y los comandos disponibles.
+- `--version` (`-V`): Imprime la versión actual de la librería en tu sistema.
+
+#### **Logs de Auditoría**
+
+Por cada corrida, la librería genera de manera automática un archivo de logs local (ej. `vdeploy-YYYY-MM-DDTHH-mm-ss.log`) en tu directorio actual. Este log te permite inspeccionar todo lo que el sistema ejecutó, así como posibles errores silenciosos.
 
 ---
 
