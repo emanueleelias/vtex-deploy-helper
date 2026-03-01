@@ -241,7 +241,7 @@ export class VtexDeploy {
           { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
           { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
           { emoji: '📤', label: 'Ejecutando release patch stable', command: 'vtex release patch stable' },
-          { emoji: '🛠️', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
+          { emoji: '🔨', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
           { emoji: '💾', label: 'Actualizando workspace de producción', command: 'vtex update' }
         ];
 
@@ -301,7 +301,7 @@ export class VtexDeploy {
           { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
           { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
           { emoji: '📦', label: 'Publicando app', command: 'vtex publish' },
-          { emoji: '🛠️', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
+          { emoji: '🔨', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
           { emoji: '💾', label: 'Actualizando workspace productivo', command: 'vtex update' }
         ];
 
@@ -361,7 +361,7 @@ export class VtexDeploy {
           { emoji: '🧹', label: 'Eliminando/limpiando workspace de producción si existe', command: 'vtex workspace delete production' },
           { emoji: '🔄', label: 'Cambiando a workspace production', command: 'vtex use production --production' },
           { emoji: '📦', label: 'Publicando actualización', command: 'vtex publish' },
-          { emoji: '🛠️', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
+          { emoji: '🔨', label: 'Ejecutando deploy force', command: 'vtex deploy --force' },
           { emoji: '💾', label: 'Actualizando workspace productivo', command: 'vtex update' }
         ];
 
@@ -452,9 +452,7 @@ export class VtexDeploy {
         }
 
         const finalSteps: DeployStep[] = [
-          { emoji: '🚀', label: 'Promoviendo cambios', command: 'vtex promote' },
-          { emoji: '🔄', label: 'Cambiando a workspace master', command: 'vtex use master' },
-          { emoji: '💾', label: 'Actualizando workspace master', command: 'vtex update' }
+          { emoji: '🚀', label: 'Promoviendo cambios', command: 'vtex promote' }
         ];
         await this.runPipeline(finalSteps);
 
