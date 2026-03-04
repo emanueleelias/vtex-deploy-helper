@@ -2,9 +2,9 @@ import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import chalk from 'chalk';
 import * as inquirer from 'inquirer';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
-import * as fs from 'fs';
+
 
 interface DeployStep {
   emoji: string;
@@ -13,11 +13,8 @@ interface DeployStep {
 }
 
 function createLogger() {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const logFile = path.join(process.cwd(), `vdeploy-${timestamp}.log`);
-
   return (message: string) => {
-    fs.appendFileSync(logFile, `${new Date().toISOString()} - ${message}\n`, 'utf8');
+    console.debug(`[vdeploy] ${new Date().toISOString()} - ${message}`);
   };
 }
 
@@ -140,12 +137,12 @@ export class VtexDeploy {
       const manifestPath = path.join(currentDir, 'manifest.json');
 
       // Verificar si existe el archivo
-      if (!fs.existsSync(manifestPath)) {
+      if (!existsSync(manifestPath)) {
         throw new Error('No se encontró el archivo manifest.json en el directorio actual. Asegúrate de estar en el directorio raíz del proyecto.');
       }
 
       // Leer y parsear el manifest.json
-      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+      const manifestContent = readFileSync(manifestPath, 'utf-8');
       const manifest: ManifestData = JSON.parse(manifestContent);
 
       // Validar que exista el vendor
